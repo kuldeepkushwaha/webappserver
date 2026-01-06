@@ -17,17 +17,45 @@ wss.on("connection", (ws) => {
     ws.on("message", (msg) => {
         try {
             const data = JSON.parse(msg);
-            console.log("Received:", data.type);
+            console.log("Received:", data.type, "from", ws === androidClient ? "Android" : "Web");
 
-            if (data.type === "register_android") androidClient = ws;
-            if (data.type === "register_web") webClient = ws;
+            // Register clients
+            if (data.type === "register_android") {
+                androidClient = ws;
+                console.log("Android client registered");
+            }
+            
+            if (data.type === "register_web") {
+                webClient = ws;
+                console.log("Web client registered");
+            }
+
+            // IMPORTANT: Forward request_offer from web to android
+            if (data.type === "request_offer" && androidClient) {
+                console.log("Forwarding request_offer to Android");
+                androidClient.send(msg.toString());
+            }
 
             // Forward signaling messages
-            if (data.type === "offer" && webClient) webClient.send(msg.toString());
-            if (data.type === "answer" && androidClient) androidClient.send(msg.toString());
+            if (data.type === "offer" && webClient) {
+                console.log("Forwarding offer to Web");
+                webClient.send(msg.toString());
+            }
+            
+            if (data.type === "answer" && androidClient) {
+                console.log("Forwarding answer to Android");
+                androidClient.send(msg.toString());
+            }
+            
             if (data.type === "icecandidate") {
-                if (ws === androidClient && webClient) webClient.send(msg.toString());
-                if (ws === webClient && androidClient) androidClient.send(msg.toString());
+                if (ws === androidClient && webClient) {
+                    console.log("Forwarding ICE candidate from Android to Web");
+                    webClient.send(msg.toString());
+                }
+                if (ws === webClient && androidClient) {
+                    console.log("Forwarding ICE candidate from Web to Android");
+                    androidClient.send(msg.toString());
+                }
             }
         } catch (e) {
             console.error("Error parsing message:", e);
@@ -35,13 +63,21 @@ wss.on("connection", (ws) => {
     });
 
     ws.on("close", () => {
-        if (ws === androidClient) androidClient = null;
-        if (ws === webClient) webClient = null;
+        if (ws === androidClient) {
+            console.log("Android client disconnected");
+            androidClient = null;
+        }
+        if (ws === webClient) {
+            console.log("Web client disconnected");
+            webClient = null;
+        }
+    });
+
+    ws.on("error", (error) => {
+        console.error("WebSocket error:", error);
     });
 });
 
 server.listen(port, "0.0.0.0", () => {
-    console.log(`Server listening on port ${port}`);
+    console.log(`Signaling Server listening on port ${port}`);
 });
-
-
