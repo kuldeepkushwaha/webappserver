@@ -19,15 +19,17 @@ wss.on("connection", (ws) => {
             const data = JSON.parse(msg);
             console.log("Received:", data.type, "from", ws === androidClient ? "Android" : "Web");
                 // ---- TOUCH FORWARDING (ADD ONLY THIS) ----
-                if (data.type ===  "touch") {
-                    if (androidSocket && androidSocket.readyState === WebSocket.OPEN) {
-                        androidSocket.send(JSON.stringify(msg));
-                        console.log("Touch forwarded to Android", msg);
+                // ---- TOUCH FORWARDING ----
+                if (data.type === "touch") {
+                    if (androidClient && androidClient.readyState === WebSocket.OPEN) {
+                        androidClient.send(msg.toString());
+                        console.log("Touch forwarded to Android", data);
                     } else {
                         console.log("Android not connected for touch");
                     }
-                    return; // IMPORTANT: stop further processing
+                    return;
                 }
+
 
             // Register clients
             if (data.type === "register_android") {
@@ -91,3 +93,4 @@ wss.on("connection", (ws) => {
 server.listen(port, "0.0.0.0", () => {
     console.log(`Signaling Server listening on port ${port}`);
 });
+
