@@ -30,7 +30,15 @@ wss.on("connection", (ws) => {
                     return;
                 }
 
-
+            //scroll
+            if (data.type === "scroll") {
+                if (androidClient && androidClient.readyState === WebSocket.OPEN) {
+                    androidClient.send(msg.toString());
+                    console.log("Scroll forwarded to Android", data);
+                }
+                return;
+            }
+            
             // Register clients
             if (data.type === "register_android") {
                 androidClient = ws;
@@ -93,4 +101,5 @@ wss.on("connection", (ws) => {
 server.listen(port, "0.0.0.0", () => {
     console.log(`Signaling Server listening on port ${port}`);
 });
+
 
