@@ -1,50 +1,93 @@
 const WebSocket = require("ws");
+const http = require("http");
 
-const wss = new WebSocket.Server({ port: 8080 });
+const port = process.env.PORT || 10000;
+const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("Signaling Server is Running");
+});
 
-let androidSocket = null;
-let webSocket = null;
+const wss = new WebSocket.Server({ server });
+let androidClient = null;
+let webClient = null;
 
 wss.on("connection", (ws) => {
+    console.log("New connection established");
 
-    ws.on("message", (data) => {
-        const msg = JSON.parse(data.toString());
+    ws.on("message", (msg) => {
+        try {
+            const data = JSON.parse(msg);
+            console.log("Received:", data.type, "from", ws === androidClient ? "Android" : "Web");
+                // ---- TOUCH FORWARDING (ADD ONLY THIS) ----
+                if (data.type ===  "touch") {
+                    if (androidSocket && androidSocket.readyState === WebSocket.OPEN) {
+                        androidSocket.send(JSON.stringify(msg));
+                        console.log("Touch forwarded to Android", msg);
+                    } else {
+                        console.log("Android not connected for touch");
+                    }
+                    return; // IMPORTANT: stop further processing
+                }
 
-        // ---- REGISTER CLIENT ----
-        if (msg.type === "register") {
-            if (msg.role === "android") {
-                androidSocket = ws;
-                console.log("Android connected");
-            } else if (msg.role === "web") {
-                webSocket = ws;
-                console.log("Web connected");
+            // Register clients
+            if (data.type === "register_android") {
+                androidClient = ws;
+                console.log("Android client registered");
             }
-            return;
-        }
-
-        // ---- TOUCH : WEB → ANDROID ONLY ----
-        if (msg.type === "touch") {
-            if (androidSocket && androidSocket.readyState === WebSocket.OPEN) {
-                androidSocket.send(JSON.stringify(msg));
-                console.log("Touch forwarded to Android:", msg);
-            } else {
-                console.log("Android socket not connected");
+            
+            if (data.type === "register_web") {
+                webClient = ws;
+                console.log("Web client registered");
             }
-            return;
-        }
 
-        // ---- WEBRTC SIGNALS ----
-        if (ws === androidSocket && webSocket) {
-            webSocket.send(JSON.stringify(msg));
-        } else if (ws === webSocket && androidSocket) {
-            androidSocket.send(JSON.stringify(msg));
+            // IMPORTANT: Forward request_offer from web to android
+            if (data.type === "request_offer" && androidClient) {
+                console.log("Forwarding request_offer to Android");
+                androidClient.send(msg.toString());
+            }
+
+            // Forward signaling messages
+            if (data.type === "offer" && webClient) {
+                console.log("Forwarding offer to Web");
+                webClient.send(msg.toString());
+            }
+            
+            if (data.type === "answer" && androidClient) {
+                console.log("Forwarding answer to Android");
+                androidClient.send(msg.toString());
+            }
+            
+            if (data.type === "icecandidate") {
+                if (ws === androidClient && webClient) {
+                    console.log("Forwarding ICE candidate from Android to Web");
+                    webClient.send(msg.toString());
+                }
+                if (ws === webClient && androidClient) {
+                    console.log("Forwarding ICE candidate from Web to Android");
+                    androidClient.send(msg.toString());
+                }
+            }
+        } catch (e) {
+            console.error("Error parsing message:", e);
         }
     });
 
     ws.on("close", () => {
-        if (ws === androidSocket) androidSocket = null;
-        if (ws === webSocket) webSocket = null;
+        if (ws === androidClient) {
+            console.log("Android client disconnected");
+            androidClient = null;
+        }
+        if (ws === webClient) {
+            console.log("Web client disconnected");
+            webClient = null;
+        }
+    });
+
+    ws.on("error", (error) => {
+        console.error("WebSocket error:", error);
     });
 });
 
-console.log("Signaling server running on ws://localhost:8080");
+server.listen(port, "0.0.0.0", () => {
+    console.log(`Signaling Server listening on port ${port}`);
+});
